@@ -10,9 +10,7 @@
 #include <BH1750.h>
 #include <BMP085.h>
 
-//#include "Arduino.h"
 #include "DHT.h"
-#include <Wire.h>
 
 float temperature; // parameters
 float humidity;
