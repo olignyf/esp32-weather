@@ -1,3 +1,15 @@
+//
+//
+// NOTE: For flashing PIN IO0 must be shorted with GND during flashing, but then must be disconnected and unit rebooted for things to run.
+// WARNING: Pin IO2 needs to be unconnected for flashing to work, but can be used for input/output
+// WARNING: Pin IO39 cannot be used for output on WT32-ETH01
+// WARNING: Pin IO36 cannot be used for output on WT32-ETH01
+
+int SDA_PIN = 14;
+int SCL_PIN = 15;
+#define DHTPIN 4 // dht sensor is connected to IO4
+#define WHITE_DHTPIN 2 /// dht sensor is connected to IO2 
+
 #define BLYNK_PRINT Serial
 
 #define BLYNK_TEMPLATE_ID "###############"
@@ -11,20 +23,27 @@
 #include <BMP085.h>
 
 #include "DHT.h"
+#include <Wire.h>
 
 float temperature; // parameters
 float humidity;
+float pressure;
+float mbar;
+
+#define BH1750_DEFAULT_I2CADDR 0x23// because ADD is left floating 
+BH1750 myBH1750;
+
+BMP085 myBarometer; // initialise pressure sensor
+#define ALTITUDE 1655.0 // Altitude of SparkFun's HQ in Boulder, CO. in meters
 
 char auth[] = BLYNK_AUTH_TOKEN; // replace this with your auth token
 char ssid[] = ""; // replace this with your wifi name (SSID)
 char pass[] = ""; // replace this with your wifi password
 
-#define DHTPIN 4 // dht sensor is connected to IO4
 #define DHTTYPE DHT11     // DHT 11
 //#define DHTTYPE DHT22   // DHT 22, AM2302, AM2321
 //#define DHTTYPE DHT21   // DHT 21, AM2301
 
-#define WHITE_DHTPIN 14 // dht sensor is connected to IO4
 #define WHITE_DHTTYPE DHT22     // DHT 11
 
 DHT dht(DHTPIN, DHTTYPE); // initialise dht sensor
@@ -34,7 +53,7 @@ BlynkTimer timer;
 static bool eth_connected = false;
 void WiFiEvent(WiFiEvent_t event)
 {
-  //Serial.println("Wifi Event");
+  // Serial.println("Wifi Event");
   switch (event) {
     case ARDUINO_EVENT_ETH_START:
       Serial.println("ETH Started");
@@ -70,12 +89,10 @@ void WiFiEvent(WiFiEvent_t event)
   }
 }
 
-int LED = 2;
+
 
 void sendSensor() // function to read sensor values and send them to Blynk
 {
-  digitalWrite(LED, HIGH);  // turn the LED on (HIGH is the voltage level)
-  delay(1000);
   humidity = dht.readHumidity();
   temperature = dht.readTemperature();
   if (isnan(humidity) || isnan(temperature)) 
@@ -83,37 +100,47 @@ void sendSensor() // function to read sensor values and send them to Blynk
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
-  Serial.println("dht temperature: "+String(temperature,2));
-  Serial.println("dht humidity: "+String(humidity,2));
-
-  humidity = dhtWhite.readHumidity();
-  temperature = dhtWhite.readTemperature();
-  if (isnan(humidity) || isnan(temperature)) 
+  float humidity2 = dhtWhite.readHumidity();
+  float temperature2 = dhtWhite.readTemperature();
+  if (isnan(humidity2) || isnan(temperature2)) 
   {
     Serial.println("Failed to read from DHT white sensor!");
-    return;
-  }  
-  Serial.println("dht temperature HIGH PRECISION: "+String(temperature,2));
-  Serial.println("dht humidity HIGH PRECISION: "+String(humidity,2));
+  }
+  else
+  { // to compare both
+    Serial.println("dht temperature: "+String(temperature,2));
+    Serial.println("dht humidity: "+String(humidity,2));
 
+    Serial.println("dht temperature HIGH PRECISION: "+String(temperature2,2));
+    Serial.println("dht humidity HIGH PRECISION: "+String(humidity2,2));
+  }
+
+  pressure = myBarometer.bmp085GetPressure(myBarometer.bmp085ReadUP()); // read pressure value in pascals
+  mbar = pressure / 100; // convert millibar to pascals
+  
   Serial.println("sending temp to Blynk temperature: "+String(temperature,2));
   Serial.println("sending temp to Blynk humidity: "+String(humidity,2));
+  Serial.println("sending temp to Blynk mbar: "+String(mbar,2));
   Blynk.virtualWrite(V0, temperature); // send all the values to their respective virtual pins
   Blynk.virtualWrite(V1, humidity);
-  digitalWrite(LED, LOW);   // turn the LED off
+  Blynk.virtualWrite(V2, mbar);
+  //Blynk.virtualWrite(V3, visible);
+  //Blynk.virtualWrite(V4, ir);
+  //Blynk.virtualWrite(V5, uv);
 }
 
 void setup()
 {
   Serial.begin(9600);
-
-  pinMode(LED, OUTPUT);
   
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
   
-  Serial.println("Going to BM init");
-
+  Serial.println("Going to Wire begin");
+  Wire.begin(SDA_PIN, SCL_PIN);
+  Serial.println("Going to BMP180 init");
+  myBarometer.init();
+  Serial.println("DHT init");
   dht.begin();
   dhtWhite.begin();
 
